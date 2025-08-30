@@ -1,2 +1,6 @@
-# Mini-Database-System
-A mini DBMS in Java, with support for query optimization Uses Volcano Model.
+[Assignment Document](https://docs.google.com/document/d/1KjbbRTm-VEmuzDHNKjDIjuBoWpelE_rD_hjM5KFZBOs/edit?usp=sharing)
+
+## Requirements
+- Java 11
+- Maven 3.9.x
+

@@ -1,0 +1,8 @@
+-------------------------------------------------------------------------------
+Test set: in.ac.iitd.db362.query.MyNewOptimzerTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 4.74 s <<< FAILURE! - in in.ac.iitd.db362.query.MyNewOptimzerTest
+test1  Time elapsed: 4.739 s  <<< ERROR!
+java.lang.NullPointerException: Cannot invoke "java.util.Collection.size()" because "c" is null
+	at in.ac.iitd.db362.query.MyNewOptimzerTest.test1(MyNewOptimzerTest.java:119)
+

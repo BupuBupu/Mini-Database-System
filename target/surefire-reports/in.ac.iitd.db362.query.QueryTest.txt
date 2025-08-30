@@ -1,0 +1,16 @@
+-------------------------------------------------------------------------------
+Test set: in.ac.iitd.db362.query.QueryTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 3, Errors: 0, Skipped: 0, Time elapsed: 0.185 s <<< FAILURE! - in in.ac.iitd.db362.query.QueryTest
+testCustomerOrdersJoin  Time elapsed: 0.005 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+	at in.ac.iitd.db362.query.QueryTest.testCustomerOrdersJoin(QueryTest.java:86)
+
+testCustomerOrdersProductJoinWithPriceFilter  Time elapsed: 0.002 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+	at in.ac.iitd.db362.query.QueryTest.testCustomerOrdersProductJoinWithPriceFilter(QueryTest.java:184)
+
+testCustomerOrdersProductJoin  Time elapsed: 0.001 s  <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <true> but was: <false>
+	at in.ac.iitd.db362.query.QueryTest.testCustomerOrdersProductJoin(QueryTest.java:151)
+

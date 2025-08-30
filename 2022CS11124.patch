@@ -1,0 +1,532 @@
+diff --git a/src/main/java/in/ac/iitd/db362/operators/ComparisonPredicate.java b/src/main/java/in/ac/iitd/db362/operators/ComparisonPredicate.java
+index 05a3ba8..00e93fb 100644
+--- a/src/main/java/in/ac/iitd/db362/operators/ComparisonPredicate.java
++++ b/src/main/java/in/ac/iitd/db362/operators/ComparisonPredicate.java
+@@ -25,6 +25,13 @@ public class ComparisonPredicate implements Predicate {
+         this.rightOperand = rightOperand;
+     }
+ 
++    private Object resolveOperand(Object operand, Tuple tuple) {
++        if (operand instanceof String && tuple.getSchema().contains(operand)) {
++            return tuple.get((String) operand);
++        } else {
++            return operand;
++        }
++    }
+     /**
+      * Evaluate a tuple
+      * @param tuple the tuple to evaluate
+@@ -36,11 +43,54 @@ public class ComparisonPredicate implements Predicate {
+         logger.trace("Evaluating tuple " + tuple.getValues() + " with schema " + tuple.getSchema());
+         logger.trace("[Predicate] " + leftOperand + " " + operator + " " + rightOperand);
+         // -------------------------
+-
++        // System.out.println("printing ----");
+         //TODO: Implement me!
+-
+-        // Remove me after your implementation
+-        throw new RuntimeException("Method not yet implemented");
++        Object leftValue = resolveOperand(leftOperand, tuple);
++        // Object rightValue = resolveOperand(rightOperand, tuple);
++        Object rightValue = rightOperand;
++    
++        if (leftValue == null || rightValue == null) return false;
++        // System.out.println("Coming till this point");
++        if (leftValue instanceof Number && rightValue instanceof Number) {
++            double l = ((Number) leftValue).doubleValue();
++            double r = ((Number) rightValue).doubleValue();
++            switch (operator) {
++                case "=":
++                    return l == r;
++                case "!=":
++                    return l != r;
++                case ">":
++                    return l > r;
++                case ">=":
++                    return l >= r;
++                case "<":
++                    return l < r;
++                case "<=":
++                    return l <= r;
++                default:
++                    throw new RuntimeException("Unknown operator: " + operator);
++            }
++        } else {
++            String l = leftValue.toString();
++            String r = rightValue.toString();
++            int cmp = l.compareTo(r);
++            switch (operator) {
++                case "=":
++                    return cmp == 0;
++                case "!=":
++                    return cmp != 0;
++                case ">":
++                    return cmp > 0;
++                case ">=":
++                    return cmp >= 0;
++                case "<":
++                    return cmp < 0;
++                case "<=":
++                    return cmp <= 0;
++                default:
++                    throw new RuntimeException("Unknown operator: " + operator);
++            }
++        }
+     }
+ 
+     // DO NOT REMOVE these functions! ---
+diff --git a/src/main/java/in/ac/iitd/db362/operators/EqualityJoinPredicate.java b/src/main/java/in/ac/iitd/db362/operators/EqualityJoinPredicate.java
+index 4aaf3c3..4225a76 100644
+--- a/src/main/java/in/ac/iitd/db362/operators/EqualityJoinPredicate.java
++++ b/src/main/java/in/ac/iitd/db362/operators/EqualityJoinPredicate.java
+@@ -38,9 +38,18 @@ public class EqualityJoinPredicate implements JoinPredicate {
+         // -------------------------
+ 
+         //TODO: Implement me!
+-
+-        // Remove me after your implementation
+-        throw new RuntimeException("Method not yet implemented");
++        Object leftValue = left.get(leftColumn);
++        Object rightValue = right.get(rightColumn);
++        if (leftValue == null || rightValue == null) {
++            return false;
++        }
++        if (leftValue instanceof Number && rightValue instanceof Number) {
++            double l = ((Number) leftValue).doubleValue();
++            double r = ((Number) rightValue).doubleValue();
++            return l == r;
++        } else {
++            return leftValue.toString().equals(rightValue.toString());
++        }
+     }
+ 
+ 
+diff --git a/src/main/java/in/ac/iitd/db362/operators/FilterOperator.java b/src/main/java/in/ac/iitd/db362/operators/FilterOperator.java
+index 100dd61..9b04de3 100644
+--- a/src/main/java/in/ac/iitd/db362/operators/FilterOperator.java
++++ b/src/main/java/in/ac/iitd/db362/operators/FilterOperator.java
+@@ -25,6 +25,7 @@ public class FilterOperator extends OperatorBase implements Operator {
+         // ------------------------
+ 
+         //TODO: Implement me!
++        child.open();
+     }
+ 
+     @Override
+@@ -34,9 +35,17 @@ public class FilterOperator extends OperatorBase implements Operator {
+         // -------------------------
+ 
+         //TODO: Implement me!
++        Tuple tuple;
++        while ((tuple = child.next()) != null) {
++            if (predicate.evaluate(tuple)) {
++                return tuple;
++            }
++        }
++        return null; // No more tuples satisfying the predicate 
++
+ 
+         // remove and return the next tuple
+-        throw new RuntimeException("Method not yet implemented");
++        // throw new RuntimeException("Method not yet implemented");
+     }
+ 
+     @Override
+@@ -44,7 +53,7 @@ public class FilterOperator extends OperatorBase implements Operator {
+         // DO NOT REMOVE LOGGING ---
+         logger.trace("Close()");
+         // -------------------------
+-
++        child.close();
+         //TODO: Implement me!
+     }
+ 
+diff --git a/src/main/java/in/ac/iitd/db362/operators/JoinOperator.java b/src/main/java/in/ac/iitd/db362/operators/JoinOperator.java
+index deee4e3..fa7b71b 100644
+--- a/src/main/java/in/ac/iitd/db362/operators/JoinOperator.java
++++ b/src/main/java/in/ac/iitd/db362/operators/JoinOperator.java
+@@ -16,6 +16,13 @@ public class JoinOperator extends OperatorBase implements Operator {
+     private Operator rightChild;
+     private JoinPredicate predicate;
+ 
++    private List<Tuple> leftBuffer, rightBuffer;
++    private Map<Object, List<Tuple>> hashTable;
++    private boolean hashLeftSide;
++    private int probeIdx, buildKeyIdx, probeKeyIdx;
++    private int matchIdx;
++    private List<Tuple> currentMatches;
++
+     public JoinOperator(Operator leftChild, Operator rightChild, JoinPredicate predicate) {
+         this.leftChild = leftChild;
+         this.rightChild = rightChild;
+@@ -27,8 +34,43 @@ public class JoinOperator extends OperatorBase implements Operator {
+         // Do not remove logging--
+         logger.trace("Open()");
+         // ----------------------
+-
+-        //TODO: Implement me!
++        leftChild.open();
++        leftBuffer = new ArrayList<>();
++        Tuple t;
++        while ((t = leftChild.next()) != null) {
++            leftBuffer.add(t);
++        }
++
++        rightChild.open();
++        rightBuffer = new ArrayList<>();
++        while ((t = rightChild.next()) != null) {
++            rightBuffer.add(t);
++        }
++
++        hashLeftSide = leftBuffer.size() <= rightBuffer.size();
++        List<Tuple> buildSide = hashLeftSide ? leftBuffer : rightBuffer;
++        List<Tuple> probeSide = hashLeftSide ? rightBuffer : leftBuffer;
++
++        EqualityJoinPredicate eq = (EqualityJoinPredicate) predicate;
++        String leftCol  = eq.getLeftColumn();
++        String rightCol = eq.getRightColumn();
++        if (hashLeftSide) {
++            buildKeyIdx = buildSide.get(0).getSchema().indexOf(leftCol);
++            probeKeyIdx = probeSide.get(0).getSchema().indexOf(rightCol);
++        } else {
++            buildKeyIdx = buildSide.get(0).getSchema().indexOf(rightCol);
++            probeKeyIdx = probeSide.get(0).getSchema().indexOf(leftCol);
++        }
++
++        hashTable = new HashMap<>();
++        for (Tuple buildT : buildSide) {
++            Object key = buildT.get(buildKeyIdx);
++            hashTable.computeIfAbsent(key, k -> new ArrayList<>()).add(buildT);
++        }
++
++        probeIdx        = 0;
++        matchIdx        = 0;
++        currentMatches  = Collections.emptyList();
+ 
+     }
+ 
+@@ -36,12 +78,34 @@ public class JoinOperator extends OperatorBase implements Operator {
+     public Tuple next() {
+         // Do not remove logging--
+         logger.trace("Next()");
+-        // ----------------------
+-
+-        //TODO: Implement me!
+-
+-        // Remove me and return the next tuple
+-        throw new RuntimeException("Method not yet implemented");
++        List<Tuple> probeSide = hashLeftSide ? rightBuffer : leftBuffer;
++
++        while (true) {
++            if (matchIdx >= currentMatches.size()) {
++                if (probeIdx >= probeSide.size()) return null;
++                Tuple probeT = probeSide.get(probeIdx);
++                currentMatches = hashTable.getOrDefault(
++                    probeT.get(probeKeyIdx),
++                    Collections.emptyList()
++                );
++                matchIdx = 0;
++                probeIdx++;
++                continue;
++            }
++
++            Tuple buildT = currentMatches.get(matchIdx++);
++            Tuple probeT = probeSide.get(probeIdx - 1);
++            Tuple leftT  = hashLeftSide ? buildT : probeT;
++            Tuple rightT = hashLeftSide ? probeT  : buildT;
++
++            if (predicate.evaluate(leftT, rightT)) {
++                List<Object> vals = new ArrayList<>(leftT.getValues());
++                vals.addAll(rightT.getValues());
++                List<String> sch  = new ArrayList<>(leftT.getSchema());
++                sch.addAll(rightT.getSchema());
++                return new Tuple(vals, sch);
++            }
++        }
+     }
+ 
+     @Override
+@@ -49,7 +113,12 @@ public class JoinOperator extends OperatorBase implements Operator {
+         // Do not remove logging ---
+         logger.trace("Close()");
+         // ------------------------
+-
++        leftChild.close();
++        rightChild.close();
++        leftBuffer     = null;
++        rightBuffer    = null;
++        hashTable      = null;
++        currentMatches = null;
+         //TODO: Implement me!
+ 
+     }
+diff --git a/src/main/java/in/ac/iitd/db362/operators/ProjectOperator.java b/src/main/java/in/ac/iitd/db362/operators/ProjectOperator.java
+index 2da80e9..a641051 100644
+--- a/src/main/java/in/ac/iitd/db362/operators/ProjectOperator.java
++++ b/src/main/java/in/ac/iitd/db362/operators/ProjectOperator.java
+@@ -16,7 +16,8 @@ public class ProjectOperator extends OperatorBase implements Operator {
+     private List<String> projectedColumns;
+     private boolean distinct;
+ 
+-
++    private Set<List<Object>> seenTuples;
++    
+     /**
+      * Project operator. If distinct is set to true, it does duplicate elimination
+      * @param child
+@@ -34,7 +35,8 @@ public class ProjectOperator extends OperatorBase implements Operator {
+         // DO NOT REMOVE LOGGING ---
+         logger.trace("Open()");
+         // -------------------------
+-
++        child.open();
++        if (distinct) seenTuples = new HashSet<>();
+         // TODO: Implement me!
+     }
+ 
+@@ -45,9 +47,31 @@ public class ProjectOperator extends OperatorBase implements Operator {
+         // ------------------------
+ 
+         //TODO: Implement me!
++        Tuple input;
++        while ((input = child.next()) != null) {
++            List<String> inSchema = input.getSchema();
++            List<Object> outValues = new ArrayList<>();
++            List<String> outSchema = new ArrayList<>();
++
++            for (String col : projectedColumns) {
++                if (inSchema.contains(col)) {
++                    outSchema.add(col);
++                    outValues.add(input.get(col));
++                }
++            }
++
++            if (distinct) {
++                if (seenTuples.add(outValues)) {
++                    return new Tuple(outValues, outSchema);
++                }
++            } else {
++                return new Tuple(outValues, outSchema);
++            }
++        }
++        return null;
+ 
+         // remove me after implementation
+-        throw new RuntimeException("Method not yet implemented");
++        // throw new RuntimeException("Method not yet implemented");
+     }
+ 
+     @Override
+@@ -55,7 +79,8 @@ public class ProjectOperator extends OperatorBase implements Operator {
+         // DO NOT REMOVE LOGGING ---
+         logger.trace("Close()");
+         // ------------------------
+-
++        child.close();
++        seenTuples = null;
+         // TODO: Implement me!
+     }
+ 
+diff --git a/src/main/java/in/ac/iitd/db362/optimizer/BasicOptimizer.java b/src/main/java/in/ac/iitd/db362/optimizer/BasicOptimizer.java
+index 8b90087..7617146 100644
+--- a/src/main/java/in/ac/iitd/db362/optimizer/BasicOptimizer.java
++++ b/src/main/java/in/ac/iitd/db362/optimizer/BasicOptimizer.java
+@@ -2,9 +2,24 @@ package in.ac.iitd.db362.optimizer;
+ 
+ import in.ac.iitd.db362.catalog.Catalog;
+ import in.ac.iitd.db362.api.PlanPrinter;
++import in.ac.iitd.db362.operators.ComparisonPredicate;
++import in.ac.iitd.db362.operators.EqualityJoinPredicate;
++import in.ac.iitd.db362.operators.FilterOperator;
+ import in.ac.iitd.db362.operators.Operator;
++
++import java.util.Collections;
++import java.util.HashSet;
++import java.util.Set;
++
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
++import in.ac.iitd.db362.operators.Predicate;
++import in.ac.iitd.db362.operators.ProjectOperator;
++import in.ac.iitd.db362.operators.SinkOperator;
++import in.ac.iitd.db362.operators.JoinOperator;
++import in.ac.iitd.db362.operators.ScanOperator;
++// include list
++import java.util.List;
+ 
+ /**
+  * A basic optimizer implementation. Feel free and be creative in designing your optimizer.
+@@ -29,6 +44,161 @@ public class BasicOptimizer implements Optimizer {
+         this.catalog = catalog;
+     }
+ 
++    private Set<String> collectColumns(Operator op) {
++        if (op instanceof ScanOperator) {
++            if (((ScanOperator)op).getSchema() == null) {
++                return new HashSet<>();
++            }
++            return new HashSet<>(((ScanOperator)op).getSchema());
++        }
++        if (op instanceof ProjectOperator) {
++            return new HashSet<>(((ProjectOperator)op).getProjectedColumns());
++            // return collectColumns(((ProjectOperator)op).getChild());
++        }
++        if (op instanceof FilterOperator) {
++            return collectColumns(((FilterOperator)op).getChild());
++        }
++        if (op instanceof JoinOperator) {
++            JoinOperator j = (JoinOperator)op;
++            Set<String> cols = collectColumns(j.getLeftChild());
++            cols.addAll(collectColumns(j.getRightChild()));
++            return cols;
++        }
++        if (op instanceof SinkOperator) {
++            return collectColumns(((SinkOperator)op).getChild());
++        }
++        return Collections.emptySet();
++    }
++
++    private Operator pushFilterBelow(Operator child, Predicate pred){
++        if (child instanceof ProjectOperator) {
++            ProjectOperator p = (ProjectOperator) child;
++            return new ProjectOperator(
++                pushFilterBelow(p.getChild(), pred),
++                p.getProjectedColumns(),
++                p.isDistinct()
++            );
++        }
++
++        if (child instanceof FilterOperator) {
++            FilterOperator f = (FilterOperator) child;
++            return new FilterOperator(pushFilterBelow(f.getChild(),pred), f.getPredicate());
++        }
++
++        if (child instanceof JoinOperator) {
++            JoinOperator j = (JoinOperator) child;
++            ComparisonPredicate cp = (ComparisonPredicate) pred;
++            // since the pridcate will obviously be a comparison predicate
++            String col = cp.getLeftOperand() instanceof String
++                     ? (String)cp.getLeftOperand()
++                     : (String)cp.getRightOperand();
++            Set<String> leftCols = collectColumns(j.getLeftChild());
++            Set<String> rightCols = collectColumns(j.getRightChild());
++            if (leftCols.isEmpty() || rightCols.isEmpty()) {
++                return new FilterOperator(child, pred);
++            }
++            boolean inLeft = leftCols.contains(col);
++            boolean inRight = rightCols.contains(col);
++            if (inLeft && !inRight) {
++                return new JoinOperator(
++                    pushFilterBelow(j.getLeftChild(), pred),
++                    j.getRightChild(),
++                    j.getPredicate()
++                );
++            }
++            else if (inRight && !inLeft) {
++                return new JoinOperator(
++                    j.getLeftChild(),
++                    pushFilterBelow(j.getRightChild(), pred),
++                    j.getPredicate()
++                );
++            }
++        }
++        if (child instanceof ScanOperator) {
++            return new FilterOperator(child, pred);
++        }
++        return new FilterOperator(child, pred);
++    }
++
++    // Push Down filters to the leaves of the plan
++    private Operator pushDownFilters(Operator op){
++        if (op instanceof FilterOperator) {
++            FilterOperator f = (FilterOperator) op;
++            Operator pushedChild = pushDownFilters(f.getChild());
++            return pushFilterBelow(pushedChild, f.getPredicate());
++        }
++        if (op instanceof ProjectOperator) {
++            ProjectOperator p = (ProjectOperator) op;
++            Operator c = pushDownFilters(p.getChild());
++            return new ProjectOperator(c, p.getProjectedColumns(), p.isDistinct());
++        }
++        if (op instanceof JoinOperator) {
++            JoinOperator j = (JoinOperator) op;
++            Operator leftChild = pushDownFilters(j.getLeftChild());
++            Operator rightChild = pushDownFilters(j.getRightChild());
++            return new JoinOperator(leftChild, rightChild, j.getPredicate());
++        }
++        if (op instanceof SinkOperator) {
++            SinkOperator s = (SinkOperator) op;
++            Operator c = pushDownFilters(s.getChild());
++            return new SinkOperator(c, s.getOutputFile());
++        }
++        return op;
++    }
++    // Pushing down the projects
++    private Operator pushProjectsBelow(Operator child, List<String> pCols, boolean distinct) {
++        if (child instanceof ProjectOperator) {
++            boolean notCase = !distinct && ((ProjectOperator) child).isDistinct();
++            if (!notCase) {
++                // remove the below project
++                Operator pChild = ((ProjectOperator) child).getChild();
++                return new ProjectOperator(pChild, pCols, distinct);
++            }
++        }
++
++        if (child instanceof JoinOperator) {
++            JoinOperator j = (JoinOperator) child;
++            EqualityJoinPredicate p = (EqualityJoinPredicate) j.getPredicate();
++            String lCol = p.getLeftColumn();
++            String rCol = p.getRightColumn();
++            boolean leftIn_Pcols = pCols.contains(lCol);
++            boolean rightIn_Pcols = pCols.contains(rCol);
++            if (leftIn_Pcols && rightIn_Pcols) {
++                return new JoinOperator(
++                    pushProjectsBelow(j.getLeftChild(), pCols, distinct),
++                    pushProjectsBelow(j.getRightChild(), pCols, distinct),
++                    j.getPredicate()
++                );
++            }
++        }
++        if (child instanceof FilterOperator) {
++            return new ProjectOperator(child, pCols, distinct);
++        }
++        if (child instanceof ScanOperator) {
++            return new ProjectOperator(child, pCols, distinct);
++        }
++        return new ProjectOperator(child, pCols, distinct);
++    }
++
++    private Operator pushDownProjects(Operator op) {
++        if (op instanceof ProjectOperator) {
++            ProjectOperator p = (ProjectOperator) op;
++            Operator pushedChild = pushDownProjects(p.getChild());
++            return pushProjectsBelow(pushedChild, p.getProjectedColumns(), p.isDistinct());
++        }
++        if (op instanceof SinkOperator) {
++            SinkOperator s = (SinkOperator) op;
++            Operator c = pushDownProjects(s.getChild());
++            return new SinkOperator(c, s.getOutputFile());
++        }
++        if (op instanceof JoinOperator) {
++            JoinOperator j = (JoinOperator) op;
++            Operator leftChild = pushDownProjects(j.getLeftChild());
++            Operator rightChild = pushDownProjects(j.getRightChild());
++            return new JoinOperator(leftChild, rightChild, j.getPredicate());
++        }
++        return op;
++    }
+     /**
+      * Basic optimization that currently does not modify the plan. Your goal is to come up with
+      * an optimization strategy that should find an optimal plan. Come up with your own ideas or adopt the ones
+@@ -42,6 +212,10 @@ public class BasicOptimizer implements Optimizer {
+         logger.info("Optimizing Plan:\n{}", PlanPrinter.getPlanString(plan));
+         // TODO: Implement me!
+         // For now, we simply return the plan unmodified.
+-        return plan;
++        // First we will push down the filters
++        Operator optimizedPlan = pushDownFilters(plan);
++        // Now we will push down the project operators
++        optimizedPlan = pushDownProjects(optimizedPlan);
++        return optimizedPlan;
+     }
+ }
